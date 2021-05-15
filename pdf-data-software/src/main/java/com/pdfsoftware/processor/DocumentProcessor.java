@@ -3,7 +3,9 @@ package com.pdfsoftware.processor;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +51,14 @@ import com.amazonaws.services.textract.model.StartDocumentAnalysisResult;
 import com.amazonaws.services.textract.model.StartDocumentTextDetectionRequest;
 import com.amazonaws.services.textract.model.StartDocumentTextDetectionResult;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pdfsoftware.processor.model.KeyValueDetails;
+import com.pdfsoftware.processor.model.TableData;
+import com.pdfsoftware.processor.model.TableDetails;
+import com.pdfsoftware.processor.util.PdUtil;
+
+import static com.pdfsoftware.processor.util.PdUtil.getTableData;
+
 public class DocumentProcessor {
 
     private static String sqsQueueName=null;
@@ -66,6 +75,7 @@ public class DocumentProcessor {
     private static AmazonSNS sns=null;
     private static AmazonTextract textract = null;
     private static AmazonS3 s3 = null;
+    private static GetDocumentAnalysisResult docAnalysisResults = null;
 
     public enum ProcessType {
         DETECTION,ANALYSIS
@@ -93,7 +103,7 @@ public class DocumentProcessor {
         
     }
     // Creates an SNS topic and SQS queue. The queue is subscribed to the topic. 
-    static void createTopicandQueue()
+   private static void createTopicandQueue()
     {
         //create a new SNS topic
         snsTopicName="AmazonTextractTopic" + Long.toString(System.currentTimeMillis());
@@ -130,7 +140,7 @@ public class DocumentProcessor {
          System.out.println("Queue url: " + sqsQueueUrl);
          System.out.println("Queue sub arn: " + sqsSubscriptionArn );
      }
-    static void deleteTopicandQueue()
+   private static void deleteTopicandQueue()
     {
         if (sqs !=null) {
             sqs.deleteQueue(sqsQueueUrl);
@@ -144,7 +154,7 @@ public class DocumentProcessor {
     }
     
     //Starts the processing of the input document.
-    static void processDocument(String inBucket, String inDocument, String inRoleArn, ProcessType type) throws Exception
+   private static void processDocument(String inBucket, String inDocument, String inRoleArn, ProcessType type) throws Exception
     {
         bucket=inBucket;
         document=inDocument;
@@ -208,12 +218,7 @@ public class DocumentProcessor {
                                 	getDocTextDetectionResults();
                                     break;
                                 case ANALYSIS:
-                                	GetDocumentAnalysisResult results = getDocAnalysisResults();
-                                	ObjectMapper jsonMapper = new ObjectMapper();
-                                	String jsonDoc = jsonMapper.writeValueAsString(results);
-                                	System.out.println("JsonString: " +jsonDoc);
-                                	FileWriter fw = new FileWriter("E:\\Vinod_Project\\github\\pdf-data-software-v1\\output.json");
-                                	fw.write(jsonDoc);
+                                	docAnalysisResults = getDocAnalysisResults();
                                     break;
                                 default:
                                     System.out.println("Invalid processing type. Choose Detection or Analysis");
@@ -239,8 +244,51 @@ public class DocumentProcessor {
                 Thread.sleep(5000);
             }
         } while (!jobFound);
-
+        
+    	ObjectMapper jsonMapper = new ObjectMapper();
+    	String jsonDoc = jsonMapper.writeValueAsString(docAnalysisResults);
+    	System.out.println("JsonString: " +jsonDoc);
+    	FileWriter fw = new FileWriter("E:\\Vinod_Project\\github\\pdf-data-software-v1\\output.json");
+    	fw.write(jsonDoc);
+    	fw.close();
         System.out.println("Finished processing document");
+        
+		List<KeyValueDetails> keyValueDetailList = null;
+		Map<Integer, List<KeyValueDetails>> tableRecordsMap = null;
+        Map<String, List<TableData>> tablesData = getTableData(docAnalysisResults);
+        
+        List<TableData> tableRecords = null;
+		int recordNumber = 1;
+		tableRecordsMap = new HashMap<>();
+		keyValueDetailList = new ArrayList<>();
+		
+		for (Map.Entry<String, List<TableData>> page : tablesData.entrySet()) {
+			String tableKey = page.getKey();
+			tableRecords = page.getValue();
+			Collections.sort(tableRecords);
+			int rowIdxFirst = 1;
+			for(TableData table : tableRecords) {
+				KeyValueDetails keyVal = new KeyValueDetails();
+				int rowIdx = table.getRowIndex();
+				int colIdx = table.getColumnIndex();
+				String colValue = table.getColumnValue();
+				
+				keyVal.setKey(colIdx);
+				keyVal.setValue(colValue);
+				keyValueDetailList.add(keyVal);
+				
+				if(rowIdxFirst == rowIdx) {
+					rowIdxFirst++;
+					continue;
+				}else {
+					tableRecordsMap.put(rowIdx, keyValueDetailList);
+				}
+			}
+			rowIdxFirst = 1;
+		}
+		
+		PdUtil.populateExcelFromTemplate(tableRecordsMap);
+		
     }
     
     private static void startDocTextDetection(String bucket, String document) throws Exception{
