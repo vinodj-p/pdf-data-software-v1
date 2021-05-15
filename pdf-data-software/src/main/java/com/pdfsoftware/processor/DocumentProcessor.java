@@ -25,6 +25,7 @@ import com.amazonaws.services.sns.AmazonSNS;
 import com.amazonaws.services.sns.AmazonSNSClientBuilder;
 import com.amazonaws.services.sns.model.CreateTopicRequest;
 import com.amazonaws.services.sns.model.CreateTopicResult;
+import com.amazonaws.services.sns.model.DeleteTopicRequest;
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
 import com.amazonaws.services.sqs.model.CreateQueueRequest;
@@ -137,7 +138,7 @@ public class DocumentProcessor {
         }
         
         if (sns!=null) {
-            sns.deleteTopic(snsTopicArn);
+            sns.deleteTopic(new DeleteTopicRequest().withTopicArn(snsTopicArn));
             System.out.println("SNS topic deleted");
         }
     }
