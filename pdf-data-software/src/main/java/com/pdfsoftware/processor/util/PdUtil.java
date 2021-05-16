@@ -30,6 +30,7 @@ import com.pdfsoftware.processor.model.TableData;
 public class PdUtil {
 	
 	public static Map<String, List<TableData>> getTableData(GetDocumentAnalysisResult docAnalysisResult) {
+		System.out.println("In getTableData:: Processing table data...");
 		java.util.List<Block> blocks = docAnalysisResult.getBlocks();
 
 		Map<String, Block> tables = new HashMap<>();
@@ -102,19 +103,19 @@ public class PdUtil {
 				tableCellMap.put(recordList.getTableId(), tempList);
 			}
 		}
+		System.out.println("Out getTableData:: Processed table data :: TabeMap is: " +tableCellMap.size());
 		return tableCellMap;
 	}
 	
-	public static XSSFWorkbook populateExcelFromTemplate(Map<Integer, List<KeyValueDetails>> tableRecordsMap) throws IOException {
+	public static XSSFWorkbook populateExcelFromTemplate(Map<Integer, Map<Integer, List<KeyValueDetails>>> tableMap) throws IOException {
+		System.out.println("Generating xml results...");
 		XSSFWorkbook xssfWorkbook = null;
 		try {
-			if (Objects.nonNull(tableRecordsMap) && !tableRecordsMap.isEmpty()) {
-				InputStream ins = new FileInputStream(
-						"E:\\Vinod_Project\\github\\pdf-data-software-v1\\Input.xlsx");
+			if (Objects.nonNull(tableMap) && !tableMap.isEmpty()) {
+				//InputStream ins = new FileInputStream("E:\\Vinod_Project\\github\\pdf-data-software-v1\\Input.xlsx");
+				xssfWorkbook = new XSSFWorkbook();
 				
-				xssfWorkbook = new XSSFWorkbook(ins);
-				List<KeyValueDetails> keyValueList = null;
-				XSSFSheet sheet = xssfWorkbook.getSheetAt(0);
+				XSSFSheet sheet = null;
 				int rowNumber = 1;
 				Cell cell = null;
 				CellStyle style = xssfWorkbook.createCellStyle();
@@ -126,39 +127,48 @@ public class PdUtil {
 				style.setTopBorderColor(IndexedColors.BLACK.getIndex());
 				style.setBorderLeft(CellStyle.BORDER_THIN);
 				style.setLeftBorderColor(IndexedColors.BLACK.getIndex());
-				for (Map.Entry<Integer, List<KeyValueDetails>> records : tableRecordsMap.entrySet()) {
-					
-					if (Objects.isNull(records)
-							|| records.getValue().isEmpty()) {
-						keyValueList = records.getValue();
-						Row dataRow = sheet.createRow(rowNumber++);
-						int dataColumnNumber = 0;
-						for (KeyValueDetails keyValueDetails : keyValueList) {
-							cell = dataRow.createCell(dataColumnNumber++);
-							cell.setCellValue(keyValueDetails.getValue());
-							cell.setCellStyle(style);
-						}
-					} else {
-						int dataColumnNumber = 0;
-						keyValueList = records.getValue();
-						if (isValuePresent(keyValueList)) {
-							Row dataRow = sheet.createRow(rowNumber++);
-							for (KeyValueDetails keyValueDetailTableRecord : keyValueList) {
-								cell = dataRow.createCell(dataColumnNumber++);
-								cell.setCellValue(keyValueDetailTableRecord.getValue());
-								cell.setCellStyle(style);
+				
+				
+				for (Map.Entry<Integer, Map<Integer, List<KeyValueDetails>>> tableRecords : tableMap.entrySet()) {
+					if (null != tableRecords && !tableRecords.getValue().isEmpty()) {
+						int tableNo = tableRecords.getKey();
+						sheet = xssfWorkbook.createSheet("Table-sheet"+String.valueOf(tableNo));
+						for(Map.Entry<Integer, List<KeyValueDetails>> tRowCellsData : tableRecords.getValue().entrySet()) {
+							int rowId = tRowCellsData.getKey();
+							rowNumber = rowId;
+							List<KeyValueDetails> columnDetails = tRowCellsData.getValue();
+							
+							if(Objects.isNull(tRowCellsData) || columnDetails.isEmpty()) {
+								Row dataRow = sheet.createRow(rowNumber++);
+								int columnNumber = 0;
+								for (KeyValueDetails keyValueDetails : columnDetails) {
+									columnNumber = keyValueDetails.getKey();
+									cell = dataRow.createCell(columnNumber++);
+									cell.setCellValue(keyValueDetails.getValue());
+									cell.setCellStyle(style);
+								}
+							}else{
+								Row dataRow = sheet.createRow(rowNumber++);
+								int columnNumber = 0;
+								for (KeyValueDetails keyValueDetails : columnDetails) {
+									columnNumber = keyValueDetails.getKey();
+									cell = dataRow.createCell(columnNumber++);
+									cell.setCellValue(keyValueDetails.getValue());
+									cell.setCellStyle(style);
+								}
 							}
 						}
-					}
+						
+					}else {
+						System.out.println("No records to create excel...");
+					} 
 				}
-			} else {
-					System.out.println("No records to create excel...");
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 		FileOutputStream out = new FileOutputStream(
-				new File("E:\\Vinod_Project\\github\\pdf-data-software-v1\\Output.xlsx"));
+				new File("E:\\Vinod_Project\\github\\pdf-data-software-v1\\Reports\\output\\Output_AIRCARE_Axis.xlsx"));
 		xssfWorkbook.write(out);
 		out.close();
 		System.out.println("excel created successfully on local disk.");

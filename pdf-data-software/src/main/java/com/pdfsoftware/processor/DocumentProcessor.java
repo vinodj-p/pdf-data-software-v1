@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -83,7 +84,7 @@ public class DocumentProcessor {
 
     public static void main(String[] args) throws Exception {
         
-        String document = "E://Vinod_Project/github/tabula-pdf-py/Sample bank statement/bank statement_image.pdf";
+        String document = "E:/Vinod_Project/github/pdf-data-software-v1/Reports/AIRCARE_Axis.pdf";
         String bucket = "pdfsoftware-bkt";
         String roleArn="arn:aws:iam::184903006442:role/TextractRole";
         String bucketKey = "objects";
@@ -253,41 +254,73 @@ public class DocumentProcessor {
     	fw.close();
         System.out.println("Finished processing document");
         
-		List<KeyValueDetails> keyValueDetailList = null;
+		Map<Integer, Map<Integer, List<KeyValueDetails>>> tableMap = null;
 		Map<Integer, List<KeyValueDetails>> tableRecordsMap = null;
+		List<KeyValueDetails> keyValueDetailList = null;
+
         Map<String, List<TableData>> tablesData = getTableData(docAnalysisResults);
         
         List<TableData> tableRecords = null;
-		int recordNumber = 1;
-		tableRecordsMap = new HashMap<>();
-		keyValueDetailList = new ArrayList<>();
+		tableMap = new LinkedHashMap<>();
 		
-		for (Map.Entry<String, List<TableData>> page : tablesData.entrySet()) {
-			String tableKey = page.getKey();
-			tableRecords = page.getValue();
+		int page = 1;
+		int tableCount = 1;
+		for (Map.Entry<String, List<TableData>> tableData : tablesData.entrySet()) {
+			tableRecordsMap = new LinkedHashMap<>();			
+			String tableKey = tableData.getKey();
+			tableRecords = tableData.getValue();
 			Collections.sort(tableRecords);
-			int rowIdxFirst = 1;
-			for(TableData table : tableRecords) {
+			
+			int rowIdxFirst = 1;			
+			System.out.println("Tables Records for table : "+tableCount+ " " +tableRecords.size());
+			int tRows = tableRecords.size();
+			
+			for(int table = 0; table < tableRecords.size(); table++) {
 				KeyValueDetails keyVal = new KeyValueDetails();
-				int rowIdx = table.getRowIndex();
-				int colIdx = table.getColumnIndex();
-				String colValue = table.getColumnValue();
+				keyValueDetailList = new ArrayList<>();
+				
+				TableData rowTableIdx = tableRecords.get(table);
+				int rowIdx = rowTableIdx.getRowIndex(); //1
+				int colIdx = rowTableIdx.getColumnIndex();
+				String colValue = rowTableIdx.getColumnValue();
+				int tPage = rowTableIdx.getPageNo();
 				
 				keyVal.setKey(colIdx);
 				keyVal.setValue(colValue);
 				keyValueDetailList.add(keyVal);
 				
-				if(rowIdxFirst == rowIdx) {
-					rowIdxFirst++;
-					continue;
-				}else {
-					tableRecordsMap.put(rowIdx, keyValueDetailList);
+				for(int tablej = table+1; tablej < tableRecords.size(); tablej++) {
+					
+					TableData tdata = tableRecords.get(tablej);
+					int rowIdxChild = tdata.getRowIndex();
+					int colIdxChild = tdata.getColumnIndex();
+					String colChildValue = tdata.getColumnValue();
+					int tChildPage = tdata.getPageNo();
+					
+					if(rowIdx == rowIdxChild) {
+						KeyValueDetails keyValChild = new KeyValueDetails();
+						keyValChild.setKey(colIdxChild);
+						keyValChild.setValue(colChildValue);
+						keyValueDetailList.add(keyValChild);
+						table++;
+						if(null != tableRecords && table == (tableRecords.size()-1))
+							tableRecordsMap.put(rowIdxFirst, keyValueDetailList);
+						continue;
+					}else {
+						tableRecordsMap.put(rowIdxFirst, keyValueDetailList);
+						rowIdxFirst++;
+						break;
+					}
 				}
+
 			}
 			rowIdxFirst = 1;
+			System.out.println("records map: "+tableRecordsMap);
+			tableMap.put(tableCount++, tableRecordsMap);
+			System.out.println("Tables on page :"+tableMap.size());
 		}
-		
-		PdUtil.populateExcelFromTemplate(tableRecordsMap);
+
+		PdUtil.populateExcelFromTemplate(tableMap);
 		
     }
     
@@ -490,7 +523,7 @@ public class DocumentProcessor {
 			
 			if(docName.toUpperCase().endsWith("PDF"))
 				contentType = "application/pdf";
-			else if(docName.toUpperCase().endsWith("JPEG"))
+			else if(docName.toUpperCase().endsWith("JPEG") || docName.toUpperCase().endsWith("JPG"))
 				contentType = "image/jpeg";
 			else if(docName.toUpperCase().endsWith("PNG"))
 				contentType = "image/png";
